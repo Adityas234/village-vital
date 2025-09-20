@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { AuthGuard } from "@/components/auth-guard"
 import { DashboardLayout } from "@/components/dashboard-layout"
@@ -10,12 +9,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
 import { CalendarIcon, Droplets, AlertTriangle, CheckCircle, TrendingUp, Eye } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -23,12 +22,12 @@ import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, L
 
 // Mock data for water quality trends
 const waterQualityTrends = [
-  { month: "Jan", turbidity: 8.2, ph: 7.1, contamination: 15 },
-  { month: "Feb", turbidity: 9.1, ph: 6.9, contamination: 18 },
-  { month: "Mar", turbidity: 7.8, ph: 7.2, contamination: 12 },
-  { month: "Apr", turbidity: 6.5, ph: 7.4, contamination: 8 },
-  { month: "May", turbidity: 8.9, ph: 7.0, contamination: 16 },
-  { month: "Jun", turbidity: 5.2, ph: 7.3, contamination: 6 },
+  { month: "Jan", turbidity: 8.2, nitrate: 12, risk: 15 },
+  { month: "Feb", turbidity: 9.1, nitrate: 20, risk: 18 },
+  { month: "Mar", turbidity: 7.8, nitrate: 10, risk: 12 },
+  { month: "Apr", turbidity: 6.5, nitrate: 15, risk: 8 },
+  { month: "May", turbidity: 8.9, nitrate: 25, risk: 16 },
+  { month: "Jun", turbidity: 5.2, nitrate: 8, risk: 6 },
 ]
 
 const recentTests = [
@@ -36,8 +35,7 @@ const recentTests = [
     id: 1,
     location: "Main Well - Kamakhya Village",
     turbidity: 8.5,
-    ph: 7.1,
-    contamination: "Low",
+    nitrate: 12,
     risk: "low",
     date: "2024-01-15",
     tester: "Water Inspector Ram",
@@ -46,8 +44,7 @@ const recentTests = [
     id: 2,
     location: "River Source - Majuli Village",
     turbidity: 15.2,
-    ph: 6.8,
-    contamination: "Moderate",
+    nitrate: 28,
     risk: "moderate",
     date: "2024-01-14",
     tester: "Health Worker Priya",
@@ -56,8 +53,7 @@ const recentTests = [
     id: 3,
     location: "Community Pump - Dibrugarh",
     turbidity: 22.8,
-    ph: 6.2,
-    contamination: "High",
+    nitrate: 40,
     risk: "high",
     date: "2024-01-13",
     tester: "Dr. Sharma",
@@ -77,26 +73,66 @@ const getRiskColor = (risk: string) => {
   }
 }
 
-const getRiskLevel = (turbidity: number) => {
-  if (turbidity <= 10) return { level: "low", color: "green", percentage: 25 }
-  if (turbidity <= 20) return { level: "moderate", color: "yellow", percentage: 60 }
-  return { level: "high", color: "red", percentage: 90 }
+// Risk assessment based on multiple parameters
+const getRiskLevel = (values: {
+  coliform: number
+  turbidity: number
+  bod: number
+  cod: number
+  nitrate: number
+  ammonia: number
+}) => {
+  let score = 0
+
+  if (values.coliform > 1000) score += 3
+  else if (values.coliform > 100) score += 2
+  else if (values.coliform > 0) score += 1
+
+  if (values.turbidity > 10) score += 2
+  if (values.bod > 5) score += 2
+  if (values.cod > 10) score += 2
+  if (values.nitrate > 50) score += 2
+  if (values.ammonia > 1) score += 2
+
+  if (score <= 3) return { level: "low", percentage: 30, color: "green" }
+  if (score <= 6) return { level: "moderate", percentage: 65, color: "yellow" }
+  return { level: "high", percentage: 90, color: "red" }
 }
 
 export default function WaterQualityPage() {
   const [date, setDate] = useState<Date>()
+  const [isDateOpen, setIsDateOpen] = useState(false)
+  const [coliform, setColiform] = useState("")
   const [turbidity, setTurbidity] = useState("")
-  const [ph, setPh] = useState("")
+  const [bod, setBod] = useState("")
+  const [cod, setCod] = useState("")
+  const [nitrate, setNitrate] = useState("")
+  const [ammonia, setAmmonia] = useState("")
+  const [sourceType, setSourceType] = useState("")
+  const [gpsCoordinates, setGpsCoordinates] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
 
-  const currentRisk = turbidity ? getRiskLevel(Number.parseFloat(turbidity)) : null
+  const hasValues = coliform && turbidity && bod && cod && nitrate && ammonia
+  const currentRisk = hasValues
+    ? getRiskLevel({
+        coliform: Number(coliform),
+        turbidity: Number(turbidity),
+        bod: Number(bod),
+        cod: Number(cod),
+        nitrate: Number(nitrate),
+        ammonia: Number(ammonia),
+      })
+    : null
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!sourceType) {
+      window.alert("Please select a water source type before submitting.")
+      return
+    }
     setIsSubmitting(true)
 
-    // Simulate form submission
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
     setIsSubmitting(false)
@@ -136,7 +172,6 @@ export default function WaterQualityPage() {
     <AuthGuard>
       <DashboardLayout>
         <div className="space-y-8">
-          {/* Header */}
           <div className="animate-fade-in">
             <h1 className="text-3xl font-bold text-balance">Water Quality Monitoring</h1>
             <p className="text-muted-foreground mt-2">
@@ -151,10 +186,9 @@ export default function WaterQualityPage() {
               <TabsTrigger value="history">Test History</TabsTrigger>
             </TabsList>
 
-            {/* Submit Test Tab */}
+            {/* Submit Test */}
             <TabsContent value="submit" className="space-y-8">
               <form onSubmit={handleSubmit} className="max-w-4xl space-y-8">
-                {/* Basic Information */}
                 <Card className="animate-slide-up">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -167,9 +201,11 @@ export default function WaterQualityPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <Label htmlFor="test-date">Test Date</Label>
-                        <Popover>
+                        <Popover open={isDateOpen} onOpenChange={setIsDateOpen}>
                           <PopoverTrigger asChild>
                             <Button
+                              id="test-date"
+                              type="button"
                               variant="outline"
                               className={cn(
                                 "w-full justify-start text-left font-normal",
@@ -181,38 +217,78 @@ export default function WaterQualityPage() {
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0">
-                            <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
+                            <Calendar
+                              mode="single"
+                              selected={date}
+                              onSelect={(d) => {
+                                setDate(d)
+                                if (d) setIsDateOpen(false)
+                              }}
+                              onDayClick={(d) => {
+                                setDate(d)
+                                if (d) setIsDateOpen(false)
+                              }}
+                              initialFocus
+                            />
                           </PopoverContent>
                         </Popover>
+                        <div className="mt-2">
+                          <Label htmlFor="test-date-native" className="text-xs text-muted-foreground">
+                            Or use native picker
+                          </Label>
+                          <Input
+                            id="test-date-native"
+                            type="date"
+                            value={date ? format(date, "yyyy-MM-dd") : ""}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              if (!v) {
+                                setDate(undefined)
+                                return
+                              }
+                              const parts = v.split("-")
+                              const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+                              setDate(d)
+                            }}
+                          />
+                        </div>
+                        {/* hidden input mirrors selected date for forms */}
+                        <input type="hidden" name="testDate" value={date ? date.toISOString() : ""} />
                       </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="source-type">Source Type</Label>
-                        <Select required>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select water source type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="well">Well</SelectItem>
-                            <SelectItem value="borehole">Borehole</SelectItem>
-                            <SelectItem value="river">River</SelectItem>
-                            <SelectItem value="pond">Pond</SelectItem>
-                            <SelectItem value="tap">Tap Water</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <Label htmlFor="location">Location/Village</Label>
                         <Input id="location" placeholder="Enter location or village name" required />
                       </div>
-
                       <div className="space-y-2">
-                        <Label htmlFor="coordinates">GPS Coordinates (Optional)</Label>
-                        <Input id="coordinates" placeholder="e.g., 26.1445, 91.7362" />
+                        <Label htmlFor="source-type">Source Type</Label>
+                        <Select value={sourceType} onValueChange={setSourceType}>
+                          <SelectTrigger id="source-type" className="w-full">
+                            <SelectValue placeholder="Select water source type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="well">Well</SelectItem>
+                            <SelectItem value="river">River</SelectItem>
+                            <SelectItem value="tap">Tap</SelectItem>
+                            <SelectItem value="borehole">Borehole</SelectItem>
+                            <SelectItem value="rainwater">Rainwater</SelectItem>
+                            <SelectItem value="pond">Pond</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <input type="hidden" name="sourceType" value={sourceType} required aria-required="true" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="gps">GPS Coordinates (Optional)</Label>
+                        <Input
+                          id="gps"
+                          name="gps"
+                          placeholder="e.g., 26.1445, 91.7362"
+                          value={gpsCoordinates}
+                          onChange={(e) => setGpsCoordinates(e.target.value)}
+                          pattern={"^-?\\d{1,2}(\\.\\d+)?,\\s*-?\\d{1,3}(\\.\\d+)?$"}
+                          title="Enter coordinates as Latitude, Longitude"
+                        />
                       </div>
                     </div>
                   </CardContent>
@@ -230,33 +306,69 @@ export default function WaterQualityPage() {
                   <CardContent className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
+                        <Label htmlFor="coliform">Coliform Bacteria (CFU/mL)</Label>
+                        <Input
+                          id="coliform"
+                          type="number"
+                          value={coliform}
+                          onChange={(e) => setColiform(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
                         <Label htmlFor="turbidity">Turbidity (NTU)</Label>
                         <Input
                           id="turbidity"
                           type="number"
                           step="0.1"
-                          placeholder="e.g., 8.5"
                           value={turbidity}
                           onChange={(e) => setTurbidity(e.target.value)}
                           required
                         />
-                        <p className="text-xs text-muted-foreground">Normal range: 0-10 NTU (lower is better)</p>
                       </div>
-
                       <div className="space-y-2">
-                        <Label htmlFor="ph">pH Level</Label>
+                        <Label htmlFor="bod">BOD (mg/L)</Label>
                         <Input
-                          id="ph"
+                          id="bod"
                           type="number"
                           step="0.1"
-                          min="0"
-                          max="14"
-                          placeholder="e.g., 7.2"
-                          value={ph}
-                          onChange={(e) => setPh(e.target.value)}
+                          value={bod}
+                          onChange={(e) => setBod(e.target.value)}
                           required
                         />
-                        <p className="text-xs text-muted-foreground">Safe range: 6.5-8.5 pH</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="cod">COD (mg/L)</Label>
+                        <Input
+                          id="cod"
+                          type="number"
+                          step="0.1"
+                          value={cod}
+                          onChange={(e) => setCod(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="nitrate">Nitrate (NO₃⁻) (mg/L)</Label>
+                        <Input
+                          id="nitrate"
+                          type="number"
+                          step="0.1"
+                          value={nitrate}
+                          onChange={(e) => setNitrate(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="ammonia">Ammonia (NH₃) (mg/L)</Label>
+                        <Input
+                          id="ammonia"
+                          type="number"
+                          step="0.1"
+                          value={ammonia}
+                          onChange={(e) => setAmmonia(e.target.value)}
+                          required
+                        />
                       </div>
                     </div>
 
@@ -288,28 +400,6 @@ export default function WaterQualityPage() {
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <Label htmlFor="chlorine">Chlorine Level (mg/L)</Label>
-                        <Input id="chlorine" type="number" step="0.01" placeholder="e.g., 0.5" />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="bacteria">Bacterial Count</Label>
-                        <Select>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select bacterial level" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">None Detected</SelectItem>
-                            <SelectItem value="low">Low</SelectItem>
-                            <SelectItem value="moderate">Moderate</SelectItem>
-                            <SelectItem value="high">High</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
                     <div className="space-y-2">
                       <Label htmlFor="notes">Additional Notes</Label>
                       <Textarea
@@ -333,9 +423,8 @@ export default function WaterQualityPage() {
               </form>
             </TabsContent>
 
-            {/* Dashboard Tab */}
+            {/* Dashboard */}
             <TabsContent value="dashboard" className="space-y-6">
-              {/* Overview Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <Card className="animate-slide-up">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -371,7 +460,6 @@ export default function WaterQualityPage() {
                 </Card>
               </div>
 
-              {/* Charts */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card className="animate-slide-up">
                   <CardHeader>
@@ -399,17 +487,17 @@ export default function WaterQualityPage() {
 
                 <Card className="animate-slide-up">
                   <CardHeader>
-                    <CardTitle>pH Level Trends</CardTitle>
-                    <CardDescription>Monthly average pH levels</CardDescription>
+                    <CardTitle>Nitrate Trends</CardTitle>
+                    <CardDescription>Monthly average nitrate levels (mg/L)</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={300}>
                       <LineChart data={waterQualityTrends}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="month" />
-                        <YAxis domain={[6, 8]} />
+                        <YAxis />
                         <Tooltip />
-                        <Line type="monotone" dataKey="ph" stroke="hsl(var(--chart-2))" strokeWidth={3} />
+                        <Line type="monotone" dataKey="nitrate" stroke="hsl(var(--chart-2))" strokeWidth={3} />
                       </LineChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -417,7 +505,7 @@ export default function WaterQualityPage() {
               </div>
             </TabsContent>
 
-            {/* History Tab */}
+            {/* History */}
             <TabsContent value="history" className="space-y-6">
               <Card className="animate-slide-up">
                 <CardHeader className="flex flex-row items-center justify-between">
@@ -437,11 +525,13 @@ export default function WaterQualityPage() {
                     {recentTests.map((test) => (
                       <div key={test.id} className="flex items-center justify-between p-4 border rounded-lg">
                         <div className="flex items-center gap-4">
-                          <div
-                            className={`w-12 h-12 rounded-lg flex items-center justify-center ${getRiskColor(test.risk)}`}
-                          >
-                            <Droplets className="h-6 w-6" />
-                          </div>
+                              <div
+                                className={`w-12 h-12 rounded-lg flex items-center justify-center ${getRiskColor(
+                                  test.risk
+                                )}`}
+                              >
+                                <Droplets className="h-6 w-6" />
+                              </div>
                           <div>
                             <h4 className="font-medium">{test.location}</h4>
                             <p className="text-sm text-muted-foreground">
@@ -449,8 +539,7 @@ export default function WaterQualityPage() {
                             </p>
                             <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
                               <span>Turbidity: {test.turbidity} NTU</span>
-                              <span>pH: {test.ph}</span>
-                              <span>Contamination: {test.contamination}</span>
+                              <span>Nitrate: {test.nitrate} mg/L</span>
                             </div>
                           </div>
                         </div>
