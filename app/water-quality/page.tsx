@@ -1,7 +1,6 @@
 "use client"
 
-import type React from "react"
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { AuthGuard } from "@/components/auth-guard"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,7 +15,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
-import { CalendarIcon, Droplets, AlertTriangle, CheckCircle, TrendingUp, Eye } from "lucide-react"
+import { CalendarIcon, Droplets, AlertTriangle, CheckCircle, TrendingUp, Eye, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Area, AreaChart } from "recharts"
 
@@ -73,8 +72,8 @@ const getRiskColor = (risk: string) => {
   }
 }
 
-// Risk assessment based on multiple parameters
-const getRiskLevel = (values: {
+// API function to call your local ML model
+const predictWaterQualityRisk = async (parameters: {
   coliform: number
   turbidity: number
   bod: number
@@ -82,21 +81,32 @@ const getRiskLevel = (values: {
   nitrate: number
   ammonia: number
 }) => {
-  let score = 0
-
-  if (values.coliform > 1000) score += 3
-  else if (values.coliform > 100) score += 2
-  else if (values.coliform > 0) score += 1
-
-  if (values.turbidity > 10) score += 2
-  if (values.bod > 5) score += 2
-  if (values.cod > 10) score += 2
-  if (values.nitrate > 50) score += 2
-  if (values.ammonia > 1) score += 2
-
-  if (score <= 3) return { level: "low", percentage: 30, color: "green" }
-  if (score <= 6) return { level: "moderate", percentage: 65, color: "yellow" }
-  return { level: "high", percentage: 90, color: "red" }
+  try {
+    const response = await fetch('/api/predict-water-risk', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(parameters),
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
+    }
+    
+    const result = await response.json()
+    
+    // Validate the response format
+    if (result.status === 'error') {
+      throw new Error(result.error || 'Model prediction failed')
+    }
+    
+    return result
+  } catch (error) {
+    console.error('Error calling local ML model:', error)
+    throw error
+  }
 }
 
 export default function WaterQualityPage() {
@@ -112,10 +122,71 @@ export default function WaterQualityPage() {
   const [gpsCoordinates, setGpsCoordinates] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
+  const [currentRisk, setCurrentRisk] = useState<{
+    level: string
+    percentage: number
+    color: string
+    confidence?: number
+  } | null>(null)
+  const [isLoadingPrediction, setIsLoadingPrediction] = useState(false)
+  const [predictionError, setPredictionError] = useState<string | null>(null)
 
   const hasValues = coliform && turbidity && bod && cod && nitrate && ammonia
-  const currentRisk = hasValues
-    ? getRiskLevel({
+
+  // Function to get risk prediction from your model
+  const getRiskPrediction = async () => {
+    if (!hasValues) return
+
+    setIsLoadingPrediction(true)
+    setPredictionError(null)
+
+    try {
+      const parameters = {
+        coliform: Number(coliform),
+        turbidity: Number(turbidity),
+        bod: Number(bod),
+        cod: Number(cod),
+        nitrate: Number(nitrate),
+        ammonia: Number(ammonia),
+      }
+
+      const prediction = await predictWaterQualityRisk(parameters)
+      
+      // Assuming your model returns something like:
+      // { risk_level: "high", probability: 0.85, confidence: 0.92 }
+      // Adjust this based on your actual model output format
+      
+      let riskLevel: string
+      let percentage: number
+      let color: string
+
+      if (prediction.risk_level === "high" || prediction.probability > 0.7) {
+        riskLevel = "high"
+        percentage = Math.round(prediction.probability * 100)
+        color = "red"
+      } else if (prediction.risk_level === "moderate" || prediction.probability > 0.4) {
+        riskLevel = "moderate"
+        percentage = Math.round(prediction.probability * 100)
+        color = "yellow"
+      } else {
+        riskLevel = "low"
+        percentage = Math.round(prediction.probability * 100)
+        color = "green"
+      }
+
+      setCurrentRisk({
+        level: riskLevel,
+        percentage: percentage,
+        color: color,
+        confidence: prediction.confidence ? Math.round(prediction.confidence * 100) : undefined
+      })
+      
+    } catch (error) {
+      console.error('Prediction error:', error)
+      setPredictionError('Failed to get risk prediction. Using fallback assessment.')
+      
+      // Fallback to original logic if API fails
+      const fallbackRisk = getFallbackRiskLevel({
         coliform: Number(coliform),
         turbidity: Number(turbidity),
         bod: Number(bod),
@@ -123,7 +194,51 @@ export default function WaterQualityPage() {
         nitrate: Number(nitrate),
         ammonia: Number(ammonia),
       })
-    : null
+      setCurrentRisk(fallbackRisk)
+    } finally {
+      setIsLoadingPrediction(false)
+    }
+  }
+
+  // Fallback risk assessment (your original logic)
+  const getFallbackRiskLevel = (values: {
+    coliform: number
+    turbidity: number
+    bod: number
+    cod: number
+    nitrate: number
+    ammonia: number
+  }) => {
+    let score = 0
+
+    if (values.coliform > 1000) score += 3
+    else if (values.coliform > 100) score += 2
+    else if (values.coliform > 0) score += 1
+
+    if (values.turbidity > 10) score += 2
+    if (values.bod > 5) score += 2
+    if (values.cod > 10) score += 2
+    if (values.nitrate > 50) score += 2
+    if (values.ammonia > 1) score += 2
+
+    if (score <= 3) return { level: "low", percentage: 30, color: "green" }
+    if (score <= 6) return { level: "moderate", percentage: 65, color: "yellow" }
+    return { level: "high", percentage: 90, color: "red" }
+  }
+
+  // Trigger prediction when all values are entered
+  useEffect(() => {
+    if (hasValues) {
+      const timeoutId = setTimeout(() => {
+        getRiskPrediction()
+      }, 500) // Debounce for 500ms
+
+      return () => clearTimeout(timeoutId)
+    } else {
+      setCurrentRisk(null)
+      setPredictionError(null)
+    }
+  }, [coliform, turbidity, bod, cod, nitrate, ammonia])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -133,10 +248,35 @@ export default function WaterQualityPage() {
     }
     setIsSubmitting(true)
 
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    // Here you can also send the risk prediction along with the form data
+    const submissionData = {
+      date: date?.toISOString(),
+      location: (document.getElementById('location') as HTMLInputElement)?.value,
+      sourceType,
+      gpsCoordinates,
+      measurements: {
+        coliform: Number(coliform),
+        turbidity: Number(turbidity),
+        bod: Number(bod),
+        cod: Number(cod),
+        nitrate: Number(nitrate),
+        ammonia: Number(ammonia),
+      },
+      riskAssessment: currentRisk,
+      notes: (document.getElementById('notes') as HTMLTextAreaElement)?.value,
+    }
 
-    setIsSubmitting(false)
-    setIsSubmitted(true)
+    // Submit to your backend
+    try {
+      // await submitWaterQualityTest(submissionData)
+      await new Promise((resolve) => setTimeout(resolve, 2000)) // Mock delay
+      setIsSubmitting(false)
+      setIsSubmitted(true)
+    } catch (error) {
+      console.error('Submission error:', error)
+      setIsSubmitting(false)
+      window.alert("Failed to submit test results. Please try again.")
+    }
   }
 
   if (isSubmitted) {
@@ -151,7 +291,7 @@ export default function WaterQualityPage() {
                 </div>
                 <h2 className="text-2xl font-bold mb-2">Water Quality Test Submitted</h2>
                 <p className="text-muted-foreground mb-6">
-                  Your water quality test results have been recorded and will be analyzed. Alerts will be sent if
+                  Your water quality test results have been recorded and analyzed by our ML model. Alerts will be sent if
                   immediate action is required.
                 </p>
                 <div className="flex gap-4 justify-center">
@@ -175,7 +315,7 @@ export default function WaterQualityPage() {
           <div className="animate-fade-in">
             <h1 className="text-3xl font-bold text-balance">Water Quality Monitoring</h1>
             <p className="text-muted-foreground mt-2">
-              Monitor and report water quality metrics to ensure safe drinking water
+              Monitor and report water quality metrics with AI-powered risk assessment
             </p>
           </div>
 
@@ -252,7 +392,6 @@ export default function WaterQualityPage() {
                             }}
                           />
                         </div>
-                        {/* hidden input mirrors selected date for forms */}
                         <input type="hidden" name="testDate" value={date ? date.toISOString() : ""} />
                       </div>
 
@@ -301,7 +440,7 @@ export default function WaterQualityPage() {
                       <TrendingUp className="h-5 w-5" />
                       Quality Measurements
                     </CardTitle>
-                    <CardDescription>Enter the measured water quality parameters</CardDescription>
+                    <CardDescription>Enter the measured water quality parameters for AI risk assessment</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -373,30 +512,56 @@ export default function WaterQualityPage() {
                     </div>
 
                     {/* Risk Indicator */}
-                    {currentRisk && (
+                    {hasValues && (
                       <div className="p-4 border rounded-lg bg-muted/30">
                         <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-medium">Risk Assessment</h4>
-                          <Badge className={getRiskColor(currentRisk.level)}>
-                            {currentRisk.level.toUpperCase()} RISK
-                          </Badge>
+                          <h4 className="font-medium flex items-center gap-2">
+                            AI Risk Assessment
+                            {isLoadingPrediction && <Loader2 className="h-4 w-4 animate-spin" />}
+                          </h4>
+                          {currentRisk && (
+                            <Badge className={getRiskColor(currentRisk.level)}>
+                              {currentRisk.level.toUpperCase()} RISK
+                            </Badge>
+                          )}
                         </div>
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-sm">
-                            <span>Risk Level</span>
-                            <span>{currentRisk.percentage}%</span>
+                        
+                        {predictionError && (
+                          <div className="mb-3 text-sm text-yellow-600 bg-yellow-50 p-2 rounded">
+                            ⚠️ {predictionError}
                           </div>
-                          <Progress
-                            value={currentRisk.percentage}
-                            className={`h-2 ${
-                              currentRisk.color === "green"
-                                ? "[&>div]:bg-green-500"
-                                : currentRisk.color === "yellow"
-                                  ? "[&>div]:bg-yellow-500"
-                                  : "[&>div]:bg-red-500"
-                            }`}
-                          />
-                        </div>
+                        )}
+                        
+                        {currentRisk && (
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                              <span>Risk Level</span>
+                              <span>{currentRisk.percentage}%</span>
+                            </div>
+                            <Progress
+                              value={currentRisk.percentage}
+                              className={`h-2 ${
+                                currentRisk.color === "green"
+                                  ? "[&>div]:bg-green-500"
+                                  : currentRisk.color === "yellow"
+                                    ? "[&>div]:bg-yellow-500"
+                                    : "[&>div]:bg-red-500"
+                              }`}
+                            />
+                            {currentRisk.confidence && (
+                              <div className="text-xs text-muted-foreground">
+                                Model Confidence: {currentRisk.confidence}%
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {isLoadingPrediction && !currentRisk && (
+                          <div className="text-sm text-muted-foreground flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Analyzing water quality parameters...
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -525,13 +690,13 @@ export default function WaterQualityPage() {
                     {recentTests.map((test) => (
                       <div key={test.id} className="flex items-center justify-between p-4 border rounded-lg">
                         <div className="flex items-center gap-4">
-                              <div
-                                className={`w-12 h-12 rounded-lg flex items-center justify-center ${getRiskColor(
-                                  test.risk
-                                )}`}
-                              >
-                                <Droplets className="h-6 w-6" />
-                              </div>
+                          <div
+                            className={`w-12 h-12 rounded-lg flex items-center justify-center ${getRiskColor(
+                              test.risk
+                            )}`}
+                          >
+                            <Droplets className="h-6 w-6" />
+                          </div>
                           <div>
                             <h4 className="font-medium">{test.location}</h4>
                             <p className="text-sm text-muted-foreground">
