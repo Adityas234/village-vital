@@ -1,12 +1,10 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import {
-  Heart,
   Menu,
   Home,
   Activity,
@@ -36,28 +34,38 @@ const navigation = [
   { name: "Alerts", href: "/alerts", icon: AlertTriangle },
   { name: "Education", href: "/education", icon: BookOpen },
   { name: "Reports", href: "/reports", icon: FileText },
-  { name: "Community", href: "/community", icon: Users },
-  { name: "Profile", href: "/profile", icon: Settings },
 ]
 
-interface DashboardLayoutProps {
-  children: React.ReactNode
+type NavItem = {
+  name: string
+  href?: string
+  icon: React.ElementType
+  onClick?: () => void
 }
 
-export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+// Settings & Profile Navigation
+const getSettingsNavigation = (theme: string | undefined, setTheme: (theme: string) => void): NavItem[] => [
+  { name: "Profile", href: "/profile", icon: Settings },
+  { name: "Community", href: "/community", icon: Users },
+  { name: "Dark Mode", onClick: () => setTheme(theme === "dark" ? "light" : "dark"), icon: theme === "dark" ? Sun : Moon },
+  { name: "Sign Out", href: "/api/auth/logout", icon: LogOut },
+]
+
+function Sidebar({ mobile, onClose }: { mobile?: boolean; onClose?: () => void }) {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const settingsNavigation = getSettingsNavigation(theme, setTheme)
 
-  const Sidebar = ({ mobile = false }: { mobile?: boolean }) => (
-    <div className={cn("flex flex-col h-full", mobile ? "w-full" : "w-64")}>
-      {/* Logo */}
-      <div className="p-6 border-b">
-        <Logo size="lg" />
+  return (
+    <div className="flex flex-col h-full">
+      {/* Logo and Links */}
+      <div className="p-4">
+        <Logo />
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-2">
+      {/* Main Navigation */}
+      <nav className="flex-1 space-y-1 p-2">
         {navigation.map((item) => {
           const isActive = pathname === item.href
           return (
@@ -65,12 +73,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               key={item.name}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                "flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors",
+                isActive ? "bg-primary text-primary-foreground" : "hover:bg-muted",
               )}
-              onClick={() => mobile && setSidebarOpen(false)}
+              onClick={() => mobile && onClose?.()}
             >
               <item.icon className="h-4 w-4" />
               {item.name}
@@ -79,30 +85,80 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         })}
       </nav>
 
-      {/* Bottom Actions */}
-      <div className="p-4 border-t space-y-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      {/* Settings Navigation */}
+      <div className="p-4 border-t">
+        <button
+          onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+          className={cn(
+            "flex items-center justify-between w-full px-3 py-2 text-sm rounded-md transition-colors",
+            "hover:bg-muted"
+          )}
         >
-          {theme === "dark" ? <Sun className="h-4 w-4 mr-2" /> : <Moon className="h-4 w-4 mr-2" />}
-          {theme === "dark" ? "Light Mode" : "Dark Mode"}
-        </Button>
-        <Button variant="ghost" size="sm" className="w-full justify-start">
-          <Settings className="h-4 w-4 mr-2" />
-          Settings
-        </Button>
-        <Button variant="ghost" size="sm" className="w-full justify-start" asChild>
-          <Link href="/login">
-            <LogOut className="h-4 w-4 mr-2" />
-            Sign Out
-          </Link>
-        </Button>
+          <div className="flex items-center gap-2">
+            <Settings className="h-4 w-4" />
+            <span className="font-medium">Settings</span>
+          </div>
+          <svg
+            className={cn("h-4 w-4 transition-transform", isSettingsOpen && "rotate-180")}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        
+        {isSettingsOpen && (
+          <nav className="mt-1 ml-2 space-y-1 border-l pl-4">
+            {settingsNavigation.map((item) => {
+              const isActive = item.href ? pathname === item.href : false
+              if (item.onClick) {
+                return (
+                  <button
+                    key={item.name}
+                    onClick={() => {
+                      item.onClick?.()
+                      mobile && onClose?.()
+                    }}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors w-full text-left",
+                      "hover:bg-muted",
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.name}
+                  </button>
+                )
+              }
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href!}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors",
+                    isActive ? "bg-primary text-primary-foreground" : "hover:bg-muted",
+                  )}
+                  onClick={() => mobile && onClose?.()}
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.name}
+                </Link>
+              )
+            })}
+          </nav>
+        )}
       </div>
     </div>
   )
+}
+
+interface DashboardLayoutProps {
+  children: React.ReactNode
+}
+
+export function DashboardLayout({ children }: DashboardLayoutProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { theme, setTheme } = useTheme()
 
   return (
     <div className="min-h-screen bg-background">
@@ -115,8 +171,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Mobile Sidebar */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+        <SheetTrigger asChild>
+          <Button
+            variant="ghost"
+            className="lg:hidden fixed left-4 top-4 z-40"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        </SheetTrigger>
         <SheetContent side="left" className="p-0 w-64">
-          <Sidebar mobile />
+          <Sidebar mobile onClose={() => setSidebarOpen(false)} />
         </SheetContent>
       </Sheet>
 
@@ -124,9 +189,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <div className="lg:pl-64">
         {/* Desktop Header */}
         <div className="hidden lg:flex items-center justify-between p-4 border-b bg-card/50 backdrop-blur-sm sticky top-0 z-40">
-          <div className="flex-1" /> {/* Spacer */}
-          
-          {/* Header Actions */}
+          <div className="flex-1" />
           <div className="flex items-center gap-4">
             {/* Theme Toggle */}
             <Button
@@ -136,27 +199,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             >
               {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
-
-            {/* User Profile */}
+            
             <UserProfile />
           </div>
         </div>
 
-        {/* Mobile Header */}
-        <div className="lg:hidden flex items-center justify-between p-4 border-b bg-card">
-          <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="sm">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-          </Sheet>
-          <Logo size="md" />
-          <UserProfile compact />
-        </div>
-
         {/* Page Content */}
-        <main className="p-6">{children}</main>
+        <main className="p-8">{children}</main>
       </div>
     </div>
   )

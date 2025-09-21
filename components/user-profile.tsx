@@ -16,7 +16,6 @@ import {
   User, 
   Settings, 
   LogOut, 
-  ChevronDown,
   Mail,
   Phone,
   Shield,
@@ -193,7 +192,6 @@ export function UserProfile({ compact = false }: UserProfileProps) {
                 {formatRole(user.role)}
               </Badge>
             </div>
-            <ChevronDown className="w-4 h-4 text-muted-foreground" />
           </div>
         </Button>
       </DropdownMenuTrigger>
