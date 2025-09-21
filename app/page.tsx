@@ -3,14 +3,12 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { Badge } from "@/components/ui/badge"
 import { Heart, MapPin, Users, Activity, Droplets, AlertTriangle, BookOpen, Mail, Phone } from "lucide-react"
 import { Logo } from "@/components/logo"
-import { FloatingDownloadButton } from "@/components/floating-download-button"
 import Link from "next/link"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-background">
-      <FloatingDownloadButton />
       {/* Header */}
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
